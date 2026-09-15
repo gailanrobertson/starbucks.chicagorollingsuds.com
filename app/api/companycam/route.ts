@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { searchProjects, findStarbucksProject, getProjectPhotos } from '@/lib/companycam';
+import { searchProjects, findStarbucksProject, findOneOffProject, getProjectPhotos } from '@/lib/companycam';
 
 const isNotWorkiz = (p: { name: string }) =>
   !p.name || !p.name.toLowerCase().startsWith('workiz');
@@ -20,6 +20,57 @@ export async function GET(req: NextRequest) {
     if (projectId) {
       const photos = await getProjectPhotos(projectId);
       return NextResponse.json({ success: true, photos });
+    }
+
+    // Smart one-off (non-Starbucks) project finder
+    const brand = req.nextUrl.searchParams.get('brand');
+    if (brand) {
+      const locNumber = req.nextUrl.searchParams.get('locNumber');
+      const address = req.nextUrl.searchParams.get('address');
+      const projectName = req.nextUrl.searchParams.get('projectName');
+
+      const project = await findOneOffProject({
+        brand,
+        locNumber: locNumber || undefined,
+        woNumber: woNumber || undefined,
+        address: address || undefined,
+        projectName: projectName || undefined,
+      });
+
+      if (!project) {
+        // Fallback search — surface candidates for manual selection
+        const fallbackQuery = projectName || address?.split(',')[0].trim() || `${brand} ${locNumber || ''}`.trim();
+        const fallbackResults = await searchProjects(fallbackQuery);
+        const filteredResults = fallbackResults.filter(isNotWorkiz);
+        return NextResponse.json({
+          success: true,
+          matched: false,
+          project: null,
+          photos: [],
+          searchResults: filteredResults,
+          message: `No exact match for ${brand}${locNumber ? ` #${locNumber}` : ''}. ${filteredResults.length} similar project(s) found.`,
+        });
+      }
+
+      const photos = await getProjectPhotos(project.id);
+      return NextResponse.json({
+        success: true,
+        matched: true,
+        project: { id: project.id, name: project.name },
+        photos: photos.filter((p: {captured_at?: number}) => !p.captured_at || p.captured_at >= Math.floor(Date.now()/1000) - 7776000),
+        earliestDate: photos.length > 0
+          ? (() => {
+              const minTs = Math.min(...photos.map((p: {captured_at?: number}) => p.captured_at || 0).filter(Boolean));
+              const d = new Date(minTs * 1000);
+              const localHour = d.getUTCHours() - 5; // CDT offset
+              if (localHour < 0 || localHour < 12) {
+                d.setUTCDate(d.getUTCDate() - 1);
+              }
+              return d.toISOString().split('T')[0];
+            })()
+          : '',
+        message: `Found "${project.name}" with ${photos.length} photo(s).`,
+      });
     }
 
     // Smart Starbucks project finder

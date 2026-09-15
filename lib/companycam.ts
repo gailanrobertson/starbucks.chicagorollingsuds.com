@@ -175,6 +175,21 @@ export async function findStarbucksProject(
   }
 
   if (address) {
+    const match = await searchByAddress(address, ['starbucks', storeNumber]);
+    if (match) return match;
+  }
+
+  return null;
+}
+
+/**
+ * Address-based project search shared by Starbucks and one-off jobs.
+ * nameKeywords: strings that name-verify a candidate (case-insensitive substring
+ * of the project name), e.g. ['starbucks', '00806'] or ['cava', '010614'].
+ * Address verification is brand-agnostic: street number + street-name keyword.
+ */
+async function searchByAddress(address: string, nameKeywords: string[]): Promise<CCProject | null> {
+  {
     const normalizedTarget = normalizeAddress(address);
 
     // Extract street number and primary street-name keywords used for address verification.
@@ -215,7 +230,8 @@ export async function findStarbucksProject(
     /**
      * Pick the best verified result from a candidate list.
      *
-     * Priority 1 — Name-verified: project name contains "starbucks" or the store number.
+     * Priority 1 — Name-verified: project name contains one of nameKeywords
+     *   (e.g. "starbucks" or the store number).
      *   Catches the standard naming convention "Starbucks #02264 WO# 1979789".
      *
      * Priority 2 — Address-verified: the CC project's own address field contains both
@@ -230,7 +246,7 @@ export async function findStarbucksProject(
       const real = candidates.filter(isRealProject);
       // Priority 1: name-verified
       const byName = real.find(
-        (p) => p.name && (p.name.toLowerCase().includes('starbucks') || p.name.includes(storeNumber))
+        (p) => p.name && nameKeywords.some((k) => k && p.name.toLowerCase().includes(k.toLowerCase()))
       );
       if (byName) return byName;
       // Priority 2: address-verified
@@ -318,6 +334,53 @@ export async function findStarbucksProject(
 
     // No match found after all strategies. Return null so the UI correctly
     // reports "no photos found" instead of returning a wrong-location result.
+  }
+
+  return null;
+}
+
+/**
+ * Find a CompanyCam project for a one-off (non-Starbucks) Superclean job.
+ * Strategy mirrors findStarbucksProject: manual project-name override first,
+ * then brand + loc number name search, then the shared address-matching pipeline.
+ */
+export async function findOneOffProject(opts: {
+  brand: string;
+  locNumber?: string;
+  woNumber?: string;
+  address?: string;
+  projectName?: string;
+}): Promise<CCProject | null> {
+  const { brand, locNumber, woNumber, address, projectName } = opts;
+
+  // 0. Manual override: user typed the exact CompanyCam project name.
+  if (projectName) {
+    const results = (await searchProjects(projectName)).filter(isRealProject);
+    const exact = results.find((p) => p.name && p.name.toLowerCase() === projectName.toLowerCase());
+    if (exact) return exact;
+    const partial = results.filter((p) => p.name && p.name.toLowerCase().includes(projectName.toLowerCase()));
+    if (partial.length > 0) {
+      partial.sort((a, b) => b.updated_at - a.updated_at);
+      return partial[0];
+    }
+    return null; // manual name given but nothing found — don't fall through to a wrong guess
+  }
+
+  const nameKeywords = [brand, locNumber, woNumber].filter(Boolean) as string[];
+
+  // 1. Brand + loc number in name: "Cava #010614" / "Cava 010614"
+  if (locNumber) {
+    const results = (await searchProjects(`${brand} ${locNumber}`)).filter(isRealProject);
+    const match = results.find(
+      (p) => p.name && p.name.toLowerCase().includes(brand.toLowerCase()) && p.name.includes(locNumber)
+    );
+    if (match) return match;
+  }
+
+  // 2. Address matching — same verified pipeline as Starbucks jobs.
+  if (address) {
+    const match = await searchByAddress(address, nameKeywords);
+    if (match) return match;
   }
 
   return null;

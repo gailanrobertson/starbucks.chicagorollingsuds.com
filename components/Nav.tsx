@@ -7,6 +7,7 @@ const links = [
   { href: '/', label: 'Dashboard' },
   { href: '/schedule', label: 'Schedule' },
   { href: '/upload', label: 'Upload' },
+  { href: '/oneoff', label: 'One-Off' },
   { href: '/generate', label: 'Generate Docs' },
   { href: '/settings', label: 'Settings' },
 ];
