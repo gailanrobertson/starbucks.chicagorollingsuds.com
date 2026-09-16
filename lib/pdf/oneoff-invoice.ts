@@ -105,8 +105,7 @@ export function generateOneOffInvoicePDF(data: OneOffInvoiceData): jsPDF {
   y += 18;
 
   const billToLines = [
-    `Go Super Clean Workorder # ${data.woNumber}`,
-    `${data.brand} Store # ${data.locNumber}`,
+    'Go Super Clean',
     ...SUPERCLEAN_BILLING,
   ];
 
