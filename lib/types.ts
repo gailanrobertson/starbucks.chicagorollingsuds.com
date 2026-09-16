@@ -38,6 +38,7 @@ export interface OneOffLineItem {
 
 export interface OneOffJob {
   id: string;
+  workizJobId?: string;
   /** Brand / chain name, e.g. "Cava" */
   brand: string;
   /** Client location number, e.g. "010614" */
